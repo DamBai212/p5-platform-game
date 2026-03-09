@@ -1,0 +1,8 @@
+# Game Project Commentary
+For my final game project, I created a side-scrolling platform game called **Skyline Sprint**. My main goal was to make sure the base game mechanics were stable and working properly before adding extra features. The core game includes player movement and jumping, canyon interactions where the character falls if they step into one, collectable coins, a scrolling world, a score counter, and a lives system. The player wins when they reach the flagpole, and the game ends when all lives are lost.
+
+After getting the base game working smoothly, I implemented the three extensions from the final topic: platforms, enemies, and sound effects. **Platforms** were created using the factory pattern, which allowed each platform object to draw itself and check if the player is standing on it. **Enemies** were implemented using a constructor function, which creates patrol enemies that move back and forth and detect collisions with the player. I also added **sound** using the p5.sound library, including effects for jumping, collecting coins, taking damage, and winning the level. These sounds helped make the game feel more responsive and engaging.
+
+One of the hardest parts of the project was getting the jump physics and collision detection to work consistently across different elements like the floor, platforms, canyons, and enemies. I also had to debug issues related to world scrolling, making sure interactions still worked while the camera moved.
+
+Overall, this project helped me improve my ability to structure larger pieces of code, keep variable names consistent, and debug interactive gameplay systems. It was a good opportunity to combine programming logic with game design to create a complete and playable game
