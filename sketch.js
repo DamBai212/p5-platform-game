@@ -1,7 +1,8 @@
 /* Skyline Sprint
  * Side-scrolling platform game built with p5.js
  * Base features: world scrolling, canyons, collectables, score/lives, game states
- * Extensions: platforms (factory), enemies (constructor), procedural sound effects
+ * by Damany Bailey
+ * Date 03/09/2026
  */
 
 'use strict';
