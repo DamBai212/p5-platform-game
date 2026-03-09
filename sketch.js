@@ -151,6 +151,9 @@ function createLevel()
 
 function draw()
 {
+  gameCharWorldX = gameCharX - scrollPos;
+  const isPlaying = gameState === 'playing';
+
   drawSkyGradient();
   drawParallaxStars();
 
@@ -169,7 +172,10 @@ function draw()
   for (const canyon of canyons)
   {
     drawCanyon(canyon);
-    checkCanyon(canyon);
+    if (isPlaying)
+    {
+      checkCanyon(canyon);
+    }
   }
 
   for (const platform of platforms)
@@ -182,23 +188,33 @@ function draw()
     if (!item.isFound)
     {
       drawCollectable(item);
-      checkCollectable(item);
+      if (isPlaying)
+      {
+        checkCollectable(item);
+      }
     }
   }
 
   for (const enemy of enemies)
   {
     enemy.draw();
-    enemy.update();
-
-    if (enemy.checkContact(gameCharWorldX, gameCharY))
+    if (isPlaying)
     {
-      loseLife();
+      enemy.update();
+
+      if (enemy.checkContact(gameCharWorldX, gameCharY))
+      {
+        loseLife();
+        break;
+      }
     }
   }
 
   renderFlagpole();
-  checkFlagpole();
+  if (isPlaying)
+  {
+    checkFlagpole();
+  }
 
   pop();
 
@@ -671,6 +687,7 @@ function loseLife()
     gameCharX = width * 0.2;
     gameCharY = floorPosY;
     scrollPos = 0;
+    gameCharWorldX = gameCharX - scrollPos;
     isLeft = false;
     isRight = false;
     isPlummeting = false;
