@@ -17,10 +17,11 @@ A side-scrolling game built with p5.js as a final course submission.
 - Sounds: procedural jump, collect, hit, and win effects using `p5.sound`
 - Platforms: implemented using a factory function pattern
 - Enemies: implemented using a constructor function with patrol AI and collision
+- Double jump: press `Space` again in mid-air to clear wider gaps
 
 ## Controls
 - Move: `A` / `D` or arrow keys
-- Jump / Start / Restart: `Space`
+- Jump / Double Jump / Start / Restart: `Space`
 
 ## Run
 Open `index.html` in a browser with internet access (CDN scripts for `p5.js` and `p5.sound`).
