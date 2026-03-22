@@ -12,11 +12,15 @@ let gameCharX;
 let gameCharY;
 let scrollPos;
 let gameCharWorldX;
+const MAX_JUMPS = 2;
+const GROUND_JUMP_STRENGTH = 120;
+const AIR_JUMP_STRENGTH = 105;
 
 let isLeft = false;
 let isRight = false;
 let isFalling = false;
 let isPlummeting = false;
+let jumpsUsed = 0;
 
 let trees = [];
 let mountains = [];
@@ -136,6 +140,7 @@ function resetMovementFlags()
   isRight = false;
   isFalling = false;
   isPlummeting = false;
+  jumpsUsed = 0;
 }
 
 function clearCheckpointProgress()
@@ -296,6 +301,11 @@ function runGameLogic()
     isFalling = false;
   }
 
+  if (!isPlummeting && (isSupportedByPlatform || gameCharY >= floorPosY))
+  {
+    jumpsUsed = 0;
+  }
+
   if (isPlummeting)
   {
     gameCharY += 7;
@@ -369,10 +379,9 @@ function keyPressed()
       return;
     }
 
-    if (gameState === 'playing' && !isPlummeting && !isFalling)
+    if (gameState === 'playing' && canJump())
     {
-      gameCharY -= 120;
-      playSound(sounds.jump);
+      performJump();
     }
   }
 
@@ -413,6 +422,20 @@ function isLeftInput()
 function isRightInput()
 {
   return keyCode === RIGHT_ARROW || (typeof key === 'string' && key.toLowerCase() === 'd');
+}
+
+function canJump()
+{
+  return !isPlummeting && jumpsUsed < MAX_JUMPS;
+}
+
+function performJump()
+{
+  const jumpStrength = jumpsUsed === 0 ? GROUND_JUMP_STRENGTH : AIR_JUMP_STRENGTH;
+  gameCharY -= jumpStrength;
+  isFalling = true;
+  jumpsUsed += 1;
+  playSound(sounds.jump);
 }
 
 function drawSkyGradient()
@@ -808,7 +831,8 @@ function drawHud()
     textStyle(NORMAL);
     text(currentLevel.introText, width / 2 - 260, height * 0.37, 520, 80);
     text('Press SPACE to start. Use A/D or arrow keys to move.', width / 2, height * 0.47);
-    text('Reach each flag, activate checkpoints, and keep your lives alive.', width / 2, height * 0.52);
+    text('Press SPACE again in mid-air for a double jump over wider gaps.', width / 2, height * 0.52);
+    text('Reach each flag, activate checkpoints, and keep your lives alive.', width / 2, height * 0.57);
   }
   else if (gameState === 'level-transition')
   {
