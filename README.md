@@ -24,6 +24,7 @@ A side-scrolling game built with p5.js as a final course submission.
 
 ## Run
 Open `index.html` in a browser with internet access (CDN scripts for `p5.js` and `p5.sound`).
+Link to site https://dambai212.github.io/p5-platform-game/
 
 ## Submission note
 A draft commentary is included in `commentary.md` and can be exported to PDF for the second upload area.
