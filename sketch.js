@@ -1,8 +1,8 @@
 /* Skyline Sprint
  * Side-scrolling platform game built with p5.js
- * Base features: world scrolling, canyons, collectables, score/lives, game states
+ * Campaign update: multi-level progression, checkpoints, and crumble platforms
  * by Damany Bailey
- * Date 03/09/2026
+ * Date 03/22/2026
  */
 
 'use strict';
@@ -27,10 +27,13 @@ let platforms = [];
 let enemies = [];
 let stars = [];
 
+let currentLevel;
+let checkpoint;
 let flagpole;
-let lives = 3;
-let score = 0;
-let gameState = 'start'; // start | playing | level-clear | game-over
+let gameState = 'start'; // start | playing | level-transition | victory | game-over
+let campaignState;
+let hudMessage = '';
+let hudMessageTimer = 0;
 
 let sounds;
 
@@ -41,118 +44,137 @@ function setup()
 
   floorPosY = height * 0.75;
   initSounds();
-  startGame(true);
+  resetCampaign();
+  loadLevel(0);
   gameState = 'start';
 }
 
-function startGame(resetScore)
+function resetCampaign()
 {
-  gameCharX = width * 0.2;
-  gameCharY = floorPosY;
-  scrollPos = 0;
-  gameCharWorldX = gameCharX - scrollPos;
+  campaignState = {
+    currentLevelIndex: 0,
+    lives: 3,
+    score: 0,
+    collectedItemIds: new Set(),
+    checkpointActive: false,
+    checkpointSpawn: null
+  };
 
-  isLeft = false;
-  isRight = false;
-  isFalling = false;
-  isPlummeting = false;
+  hudMessage = '';
+  hudMessageTimer = 0;
+}
 
-  if (resetScore)
-  {
-    score = 0;
-    lives = 3;
-  }
-
-  createLevel();
+function beginCampaign()
+{
+  resetCampaign();
+  loadLevel(0);
   gameState = 'playing';
 }
 
-function createLevel()
+function loadLevel(levelIndex)
 {
-  const worldLength = 4200;
+  currentLevel = LEVELS[levelIndex];
+  campaignState.currentLevelIndex = levelIndex;
 
-  stars = Array.from({ length: 80 }, (_, i) => ({
+  resetMovementFlags();
+  buildSceneFromLevel(currentLevel);
+
+  flagpole = {
+    x: currentLevel.flagpoleX,
+    isReached: false
+  };
+
+  checkpoint = createCheckpoint(currentLevel.checkpoint);
+  checkpoint.isReached = campaignState.checkpointActive;
+
+  const spawnPoint = campaignState.checkpointActive && campaignState.checkpointSpawn
+    ? campaignState.checkpointSpawn
+    : currentLevel.spawn;
+
+  placeCharacterAtWorldPosition(spawnPoint);
+}
+
+function buildSceneFromLevel(level)
+{
+  stars = generateStars(level.worldLength, level.scenery.starCount);
+  trees = level.scenery.trees.map((tree) => ({ ...tree }));
+  mountains = level.scenery.mountains.map((mountain) => ({ ...mountain }));
+  clouds = level.scenery.clouds.map((cloud) => ({ ...cloud }));
+  canyons = level.canyons.map((canyon) => ({ ...canyon }));
+  collectables = level.collectables.map((item) => makeCollectable(item));
+  platforms = level.platforms.map((platform) => createPlatform(platform));
+  enemies = level.enemies.map((enemy) => new Enemy(enemy.x, enemy.y, enemy.range, enemy.speed));
+}
+
+function generateStars(worldLength, count)
+{
+  return Array.from({ length: count }, () => ({
     x: random(0, worldLength),
     y: random(15, 220),
     size: random(1.5, 3.5),
     twinkleOffset: random(TWO_PI),
     speed: random(0.01, 0.03)
   }));
+}
 
-  trees = [
-    { x: 260, scale: 1.0 },
-    { x: 680, scale: 1.25 },
-    { x: 1120, scale: 0.9 },
-    { x: 1500, scale: 1.1 },
-    { x: 1900, scale: 1.0 },
-    { x: 2350, scale: 1.2 },
-    { x: 2780, scale: 1.05 },
-    { x: 3220, scale: 1.1 },
-    { x: 3620, scale: 0.95 }
-  ];
+function placeCharacterAtWorldPosition(spawnPoint)
+{
+  const anchorX = width * 0.2;
+  const minScroll = min(0, width - currentLevel.worldLength);
 
-  mountains = [
-    { x: 120, width: 380, height: 260 },
-    { x: 860, width: 420, height: 280 },
-    { x: 1760, width: 460, height: 300 },
-    { x: 2720, width: 380, height: 250 },
-    { x: 3380, width: 420, height: 275 }
-  ];
+  scrollPos = constrain(anchorX - spawnPoint.x, minScroll, 0);
+  gameCharX = spawnPoint.x + scrollPos;
+  gameCharY = spawnPoint.y;
+  gameCharWorldX = spawnPoint.x;
 
-  clouds = [
-    { x: 140, y: 120, size: 0.9 },
-    { x: 560, y: 95, size: 1.3 },
-    { x: 1010, y: 130, size: 1.05 },
-    { x: 1490, y: 80, size: 1.45 },
-    { x: 2100, y: 115, size: 1.2 },
-    { x: 2580, y: 90, size: 1.0 },
-    { x: 3070, y: 110, size: 1.35 },
-    { x: 3670, y: 85, size: 1.05 }
-  ];
+  resetMovementFlags();
+}
 
-  canyons = [
-    { x: 520, width: 130 },
-    { x: 1260, width: 170 },
-    { x: 2060, width: 140 },
-    { x: 2940, width: 185 }
-  ];
+function resetMovementFlags()
+{
+  isLeft = false;
+  isRight = false;
+  isFalling = false;
+  isPlummeting = false;
+}
 
-  collectables = [
-    makeCollectable(360, floorPosY - 40),
-    makeCollectable(810, floorPosY - 40),
-    makeCollectable(990, floorPosY - 130),
-    makeCollectable(1330, floorPosY - 180),
-    makeCollectable(1690, floorPosY - 40),
-    makeCollectable(2180, floorPosY - 40),
-    makeCollectable(2480, floorPosY - 110),
-    makeCollectable(3005, floorPosY - 200),
-    makeCollectable(3490, floorPosY - 40),
-    makeCollectable(3900, floorPosY - 70)
-  ];
+function clearCheckpointProgress()
+{
+  campaignState.checkpointActive = false;
+  campaignState.checkpointSpawn = null;
+  hudMessage = '';
+  hudMessageTimer = 0;
+}
 
-  platforms = [];
-  platforms.push(createPlatform(900, floorPosY - 70, 160));
-  platforms.push(createPlatform(1220, floorPosY - 120, 130));
-  platforms.push(createPlatform(1360, floorPosY - 185, 110));
-  platforms.push(createPlatform(2440, floorPosY - 80, 130));
-  platforms.push(createPlatform(2890, floorPosY - 160, 120));
-  platforms.push(createPlatform(3020, floorPosY - 220, 120));
+function advanceToNextLevel()
+{
+  clearCheckpointProgress();
 
-  enemies = [
-    new Enemy(1580, floorPosY - 8, 240),
-    new Enemy(2250, floorPosY - 8, 190),
-    new Enemy(3320, floorPosY - 8, 240)
-  ];
+  const nextLevelIndex = campaignState.currentLevelIndex + 1;
+  if (nextLevelIndex >= LEVELS.length)
+  {
+    gameState = 'victory';
+    return;
+  }
 
-  flagpole = {
-    x: worldLength - 250,
-    isReached: false
-  };
+  loadLevel(nextLevelIndex);
+  gameState = 'playing';
 }
 
 function draw()
 {
   gameCharWorldX = gameCharX - scrollPos;
+
+  if (hudMessageTimer > 0)
+  {
+    hudMessageTimer -= 1;
+
+    if (hudMessageTimer === 0)
+    {
+      hudMessage = '';
+    }
+  }
+
   const isPlaying = gameState === 'playing';
 
   drawSkyGradient();
@@ -173,6 +195,7 @@ function draw()
   for (const canyon of canyons)
   {
     drawCanyon(canyon);
+
     if (isPlaying)
     {
       checkCanyon(canyon);
@@ -181,6 +204,11 @@ function draw()
 
   for (const platform of platforms)
   {
+    if (isPlaying)
+    {
+      platform.update();
+    }
+
     platform.draw();
   }
 
@@ -189,6 +217,7 @@ function draw()
     if (!item.isFound)
     {
       drawCollectable(item);
+
       if (isPlaying)
       {
         checkCollectable(item);
@@ -196,9 +225,17 @@ function draw()
     }
   }
 
+  renderCheckpoint();
+
+  if (isPlaying)
+  {
+    checkCheckpoint();
+  }
+
   for (const enemy of enemies)
   {
     enemy.draw();
+
     if (isPlaying)
     {
       enemy.update();
@@ -212,6 +249,7 @@ function draw()
   }
 
   renderFlagpole();
+
   if (isPlaying)
   {
     checkFlagpole();
@@ -231,29 +269,7 @@ function runGameLogic()
     return;
   }
 
-  if (isLeft)
-  {
-    if (gameCharX > width * 0.35)
-    {
-      gameCharX -= 5;
-    }
-    else
-    {
-      scrollPos += 5;
-    }
-  }
-
-  if (isRight)
-  {
-    if (gameCharX < width * 0.65)
-    {
-      gameCharX += 5;
-    }
-    else
-    {
-      scrollPos -= 5;
-    }
-  }
+  handleHorizontalMovement();
 
   let isSupportedByPlatform = false;
   for (const platform of platforms)
@@ -272,6 +288,11 @@ function runGameLogic()
   }
   else
   {
+    if (!isSupportedByPlatform)
+    {
+      gameCharY = floorPosY;
+    }
+
     isFalling = false;
   }
 
@@ -288,6 +309,42 @@ function runGameLogic()
   gameCharWorldX = gameCharX - scrollPos;
 }
 
+function handleHorizontalMovement()
+{
+  const speed = 5;
+  const minScroll = min(0, width - currentLevel.worldLength);
+
+  if (isLeft)
+  {
+    if (gameCharX > width * 0.35 || scrollPos >= 0)
+    {
+      gameCharX -= speed;
+    }
+    else
+    {
+      scrollPos += speed;
+    }
+  }
+
+  if (isRight)
+  {
+    if (gameCharX < width * 0.65 || scrollPos <= minScroll)
+    {
+      gameCharX += speed;
+    }
+    else
+    {
+      scrollPos -= speed;
+    }
+  }
+
+  scrollPos = constrain(scrollPos, minScroll, 0);
+
+  const minScreenX = scrollPos === 0 ? 0 : width * 0.35;
+  const maxScreenX = scrollPos === minScroll ? width : width * 0.65;
+  gameCharX = constrain(gameCharX, minScreenX, maxScreenX);
+}
+
 function keyPressed()
 {
   if (keyCode === 32)
@@ -296,13 +353,19 @@ function keyPressed()
 
     if (gameState === 'start')
     {
-      gameState = 'playing';
+      beginCampaign();
       return;
     }
 
-    if (gameState === 'game-over' || gameState === 'level-clear')
+    if (gameState === 'level-transition')
     {
-      startGame(true);
+      advanceToNextLevel();
+      return;
+    }
+
+    if (gameState === 'game-over' || gameState === 'victory')
+    {
+      beginCampaign();
       return;
     }
 
@@ -318,12 +381,12 @@ function keyPressed()
     return;
   }
 
-  if (keyCode === LEFT_ARROW || key.toLowerCase() === 'a')
+  if (isLeftInput())
   {
     isLeft = true;
   }
 
-  if (keyCode === RIGHT_ARROW || key.toLowerCase() === 'd')
+  if (isRightInput())
   {
     isRight = true;
   }
@@ -331,15 +394,25 @@ function keyPressed()
 
 function keyReleased()
 {
-  if (keyCode === LEFT_ARROW || key.toLowerCase() === 'a')
+  if (isLeftInput())
   {
     isLeft = false;
   }
 
-  if (keyCode === RIGHT_ARROW || key.toLowerCase() === 'd')
+  if (isRightInput())
   {
     isRight = false;
   }
+}
+
+function isLeftInput()
+{
+  return keyCode === LEFT_ARROW || (typeof key === 'string' && key.toLowerCase() === 'a');
+}
+
+function isRightInput()
+{
+  return keyCode === RIGHT_ARROW || (typeof key === 'string' && key.toLowerCase() === 'd');
 }
 
 function drawSkyGradient()
@@ -446,7 +519,9 @@ function drawTrees()
 
 function drawGroundDetail()
 {
-  for (let x = -200; x < 4500; x += 45)
+  const worldLength = currentLevel ? currentLevel.worldLength : 4500;
+
+  for (let x = -200; x < worldLength + 260; x += 45)
   {
     stroke(43, 125, 74, 140);
     line(x, floorPosY, x + 8, floorPosY - 10);
@@ -476,13 +551,14 @@ function checkCanyon(canyon)
   }
 }
 
-function makeCollectable(x, y)
+function makeCollectable(item)
 {
   return {
-    x,
-    y,
+    id: item.id,
+    x: item.x,
+    y: item.y,
     size: 28,
-    isFound: false,
+    isFound: campaignState.collectedItemIds.has(item.id),
     bobOffset: random(TWO_PI)
   };
 }
@@ -513,7 +589,62 @@ function checkCollectable(item)
   if (d < 35)
   {
     item.isFound = true;
-    score += 1;
+    campaignState.collectedItemIds.add(item.id);
+    campaignState.score += 1;
+    playSound(sounds.collect);
+  }
+}
+
+function createCheckpoint(data)
+{
+  return {
+    x: data.x,
+    y: data.y,
+    width: data.width,
+    spawn: { ...data.spawn },
+    isReached: false
+  };
+}
+
+function renderCheckpoint()
+{
+  if (!checkpoint)
+  {
+    return;
+  }
+
+  stroke(230);
+  strokeWeight(4);
+  line(checkpoint.x, floorPosY, checkpoint.x, floorPosY - 120);
+
+  noStroke();
+  fill(checkpoint.isReached ? color(81, 218, 197) : color(103, 142, 227));
+  triangle(
+    checkpoint.x,
+    floorPosY - 118,
+    checkpoint.x + 46,
+    floorPosY - 101,
+    checkpoint.x,
+    floorPosY - 84
+  );
+
+  fill(checkpoint.isReached ? color(121, 245, 226, 180) : color(141, 176, 255, 170));
+  ellipse(checkpoint.x + 4, floorPosY - 98, 26, 26);
+}
+
+function checkCheckpoint()
+{
+  if (checkpoint.isReached)
+  {
+    return;
+  }
+
+  if (abs(gameCharWorldX - checkpoint.x) < checkpoint.width * 0.5)
+  {
+    checkpoint.isReached = true;
+    campaignState.checkpointActive = true;
+    campaignState.checkpointSpawn = { ...checkpoint.spawn };
+    showHudMessage('Checkpoint activated');
     playSound(sounds.collect);
   }
 }
@@ -542,10 +673,18 @@ function checkFlagpole()
   if (!flagpole.isReached && abs(gameCharWorldX - flagpole.x) < 20)
   {
     flagpole.isReached = true;
-    gameState = 'level-clear';
     isLeft = false;
     isRight = false;
     playSound(sounds.win);
+
+    if (campaignState.currentLevelIndex === LEVELS.length - 1)
+    {
+      gameState = 'victory';
+    }
+    else
+    {
+      gameState = 'level-transition';
+    }
   }
 }
 
@@ -626,41 +765,97 @@ function drawHud()
 {
   noStroke();
   fill(19, 23, 38, 180);
-  rect(14, 14, 230, 78, 10);
+  rect(14, 14, 380, 98, 10);
 
   fill(250);
-  textSize(22);
+  textAlign(LEFT);
   textStyle(BOLD);
-  text(`Score: ${score}`, 28, 45);
-  text(`Lives: ${lives}`, 28, 76);
+  textSize(21);
+  text(`Score: ${campaignState.score}`, 28, 44);
+  text(`Lives: ${campaignState.lives}`, 28, 74);
+  textSize(18);
+  text(`${getLevelLabel()}  ${currentLevel.name}`, 160, 44);
 
-  textSize(28);
+  textStyle(NORMAL);
+  textSize(15);
+  const checkpointStatus = campaignState.checkpointActive ? 'Checkpoint: active' : 'Checkpoint: not reached';
+  text(checkpointStatus, 160, 72);
+
+  if (hudMessage)
+  {
+    rectMode(CENTER);
+    noStroke();
+    fill(19, 23, 38, 210);
+    rect(width / 2, 54, 250, 38, 10);
+    fill(248);
+    textAlign(CENTER);
+    textStyle(BOLD);
+    textSize(16);
+    text(hudMessage, width / 2, 60);
+    rectMode(CORNER);
+  }
+
   textAlign(CENTER);
+  textStyle(BOLD);
+  textSize(28);
 
   if (gameState === 'start')
   {
     fill(255);
-    text('Skyline Sprint', width / 2, height * 0.28);
+    text('Skyline Sprint Campaign', width / 2, height * 0.26);
     textSize(18);
-    text('Reach the flag, avoid canyons and enemies, collect every orb.', width / 2, height * 0.34);
-    text('Press SPACE to start and jump. Use A/D or arrow keys to move.', width / 2, height * 0.39);
+    text(`${getLevelLabel()} - ${currentLevel.name}`, width / 2, height * 0.32);
+    textStyle(NORMAL);
+    text(currentLevel.introText, width / 2 - 260, height * 0.37, 520, 80);
+    text('Press SPACE to start. Use A/D or arrow keys to move.', width / 2, height * 0.47);
+    text('Reach each flag, activate checkpoints, and keep your lives alive.', width / 2, height * 0.52);
   }
-  else if (gameState === 'level-clear')
+  else if (gameState === 'level-transition')
   {
+    const nextLevel = LEVELS[campaignState.currentLevelIndex + 1];
     fill(205, 255, 205);
-    text('Level Complete!', width / 2, height * 0.30);
+    text(`${currentLevel.name} Clear!`, width / 2, height * 0.30);
     textSize(18);
-    text('Press SPACE to play again.', width / 2, height * 0.36);
+    text(`Score: ${campaignState.score}  Lives: ${campaignState.lives}`, width / 2, height * 0.36);
+    text(`Next up: ${nextLevel.name}`, width / 2, height * 0.42);
+    textStyle(NORMAL);
+    text(nextLevel.introText, width / 2 - 260, height * 0.47, 520, 80);
+    text('Press SPACE to continue.', width / 2, height * 0.59);
+  }
+  else if (gameState === 'victory')
+  {
+    fill(217, 255, 214);
+    text('Campaign Complete!', width / 2, height * 0.29);
+    textSize(18);
+    text(`Final Score: ${campaignState.score}`, width / 2, height * 0.35);
+    text(`Lives Remaining: ${campaignState.lives}`, width / 2, height * 0.40);
+    textStyle(NORMAL);
+    text('You made it across every skyline route.', width / 2, height * 0.47);
+    text('Press SPACE to start a fresh run.', width / 2, height * 0.53);
   }
   else if (gameState === 'game-over')
   {
     fill(255, 198, 198);
     text('Game Over', width / 2, height * 0.30);
     textSize(18);
-    text('Press SPACE to restart.', width / 2, height * 0.36);
+    text(`Final Score: ${campaignState.score}`, width / 2, height * 0.36);
+    textStyle(NORMAL);
+    text('Press SPACE to restart the campaign.', width / 2, height * 0.43);
   }
 
   textAlign(LEFT);
+  textStyle(NORMAL);
+}
+
+function getLevelLabel()
+{
+  return `Level ${campaignState.currentLevelIndex + 1}/${LEVELS.length}`;
+}
+
+function showHudMessage(message)
+{
+  hudMessage = message;
+  hudMessageTimer = 150;
 }
 
 function loseLife()
@@ -670,62 +865,115 @@ function loseLife()
     return;
   }
 
-  lives -= 1;
+  campaignState.lives -= 1;
   playSound(sounds.hit);
+  resetMovementFlags();
 
-  if (lives < 1)
+  if (campaignState.lives < 1)
   {
     gameState = 'game-over';
-    isLeft = false;
-    isRight = false;
+    clearCheckpointProgress();
   }
   else
   {
-    const preservedScore = score;
-    createLevel();
-    score = preservedScore;
-
-    gameCharX = width * 0.2;
-    gameCharY = floorPosY;
-    scrollPos = 0;
-    gameCharWorldX = gameCharX - scrollPos;
-    isLeft = false;
-    isRight = false;
-    isPlummeting = false;
-    isFalling = false;
+    loadLevel(campaignState.currentLevelIndex);
   }
 }
 
-function createPlatform(x, y, length)
+function createPlatform(data)
 {
   return {
-    x,
-    y,
-    length,
+    id: data.id,
+    type: data.type || 'static',
+    x: data.x,
+    y: data.y,
+    length: data.length,
+    delayFrames: data.delayFrames || 42,
+    triggeredAt: null,
+    fallOffset: 0,
+    fallSpeed: 0,
+    update()
+    {
+      if (this.type !== 'crumble' || this.triggeredAt === null)
+      {
+        return;
+      }
+
+      if (frameCount - this.triggeredAt >= this.delayFrames)
+      {
+        this.fallSpeed += 0.38;
+        this.fallOffset += this.fallSpeed;
+      }
+    },
     draw()
     {
+      const renderY = this.y + this.fallOffset;
+      if (renderY > height + 40)
+      {
+        return;
+      }
+
+      const shaking = this.type === 'crumble' && this.triggeredAt !== null && frameCount - this.triggeredAt < this.delayFrames;
+      const shakeOffset = shaking ? sin(frameCount * 0.8) * 1.8 : 0;
+
+      push();
+      translate(shakeOffset, 0);
       noStroke();
-      fill(128, 92, 63);
-      rect(this.x, this.y, this.length, 16, 5);
-      fill(102, 150, 92);
-      rect(this.x, this.y - 8, this.length, 10, 5);
+
+      if (this.type === 'crumble')
+      {
+        fill(166, 98, 65);
+        rect(this.x, renderY, this.length, 16, 5);
+        fill(211, 152, 101);
+        rect(this.x, renderY - 8, this.length, 10, 5);
+
+        stroke(117, 60, 44);
+        strokeWeight(2);
+        line(this.x + 18, renderY - 3, this.x + 30, renderY + 7);
+        line(this.x + this.length * 0.55, renderY - 6, this.x + this.length * 0.62, renderY + 8);
+        line(this.x + this.length - 28, renderY - 5, this.x + this.length - 16, renderY + 7);
+      }
+      else
+      {
+        fill(128, 92, 63);
+        rect(this.x, renderY, this.length, 16, 5);
+        fill(102, 150, 92);
+        rect(this.x, renderY - 8, this.length, 10, 5);
+      }
+
+      pop();
     },
     checkContact(charX, charY)
     {
       const withinX = charX > this.x && charX < this.x + this.length;
-      const d = this.y - charY;
-      return withinX && d >= 0 && d < 6;
+      const platformY = this.y + this.fallOffset;
+      const delayElapsed = this.type === 'crumble' && this.triggeredAt !== null && frameCount - this.triggeredAt >= this.delayFrames;
+
+      if (delayElapsed)
+      {
+        return false;
+      }
+
+      const d = platformY - charY;
+      const touching = withinX && d >= 0 && d < 6;
+
+      if (touching && this.type === 'crumble' && this.triggeredAt === null)
+      {
+        this.triggeredAt = frameCount;
+      }
+
+      return touching;
     }
   };
 }
 
-function Enemy(x, y, range)
+function Enemy(x, y, range, speed)
 {
   this.startX = x;
   this.x = x;
   this.y = y;
   this.range = range;
-  this.speed = 1.4;
+  this.speed = speed || 1.4;
   this.direction = 1;
 
   this.update = function()
