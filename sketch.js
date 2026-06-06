@@ -17,7 +17,8 @@ const GROUND_JUMP_STRENGTH = 120;
 const AIR_JUMP_STRENGTH = 105;
 const STORAGE_KEYS = {
   progress: 'skylineSprintProgress',
-  stats: 'skylineSprintStats'
+  stats: 'skylineSprintStats',
+  muted: 'skylineSprintMuted'
 };
 
 let isLeft = false;
@@ -38,12 +39,13 @@ let stars = [];
 let currentLevel;
 let checkpoint;
 let flagpole;
-let gameState = 'start'; // start | playing | level-transition | victory | game-over
+let gameState = 'start'; // start | playing | paused | level-transition | victory | game-over
 let campaignState;
 let persistentStats;
 let hasSavedRun = false;
 let hudMessage = '';
 let hudMessageTimer = 0;
+let isMuted = false;
 
 let sounds;
 
@@ -55,6 +57,7 @@ function setup()
   floorPosY = height * 0.75;
   initSounds();
   loadPersistentStats();
+  loadAudioSettings();
 
   const savedCampaign = loadSavedCampaign();
   if (savedCampaign)
@@ -137,6 +140,32 @@ function loadPersistentStats()
       bestScore: 0,
       bestLevelReached: 1
     };
+  }
+}
+
+function loadAudioSettings()
+{
+  isMuted = false;
+
+  try
+  {
+    isMuted = localStorage.getItem(STORAGE_KEYS.muted) === 'true';
+  }
+  catch (error)
+  {
+    isMuted = false;
+  }
+}
+
+function persistAudioSettings()
+{
+  try
+  {
+    localStorage.setItem(STORAGE_KEYS.muted, String(isMuted));
+  }
+  catch (error)
+  {
+    // Ignore storage errors and continue gameplay.
   }
 }
 
@@ -553,6 +582,18 @@ function handleHorizontalMovement()
 
 function keyPressed()
 {
+  if (isMuteInput())
+  {
+    toggleMute();
+    return;
+  }
+
+  if (isPauseInput())
+  {
+    togglePause();
+    return;
+  }
+
   if (gameState === 'start' && isNewRunInput())
   {
     beginCampaign();
@@ -634,9 +675,48 @@ function isRightInput()
   return keyCode === RIGHT_ARROW || (typeof key === 'string' && key.toLowerCase() === 'd');
 }
 
+function isPauseInput()
+{
+  return keyCode === ESCAPE || (typeof key === 'string' && key.toLowerCase() === 'p');
+}
+
+function isMuteInput()
+{
+  return typeof key === 'string' && key.toLowerCase() === 'm';
+}
+
 function isNewRunInput()
 {
   return typeof key === 'string' && key.toLowerCase() === 'n';
+}
+
+function togglePause()
+{
+  if (gameState === 'playing')
+  {
+    isLeft = false;
+    isRight = false;
+    gameState = 'paused';
+    showHudMessage('Paused');
+  }
+  else if (gameState === 'paused')
+  {
+    gameState = 'playing';
+    showHudMessage('Resumed');
+  }
+}
+
+function toggleMute()
+{
+  isMuted = !isMuted;
+  persistAudioSettings();
+
+  if (isMuted)
+  {
+    stopAllSounds();
+  }
+
+  showHudMessage(isMuted ? 'Sound muted' : 'Sound on');
 }
 
 function canJump()
@@ -1017,7 +1097,7 @@ function drawHud()
 {
   noStroke();
   fill(19, 23, 38, 180);
-  rect(14, 14, 380, 98, 10);
+  rect(14, 14, 430, 112, 10);
 
   fill(250);
   textAlign(LEFT);
@@ -1032,6 +1112,8 @@ function drawHud()
   textSize(15);
   const checkpointStatus = campaignState.checkpointActive ? 'Checkpoint: active' : 'Checkpoint: not reached';
   text(checkpointStatus, 160, 72);
+  text(`Sound: ${isMuted ? 'Muted' : 'On'}`, 28, 100);
+  text('P/Esc Pause  M Mute', 160, 100);
 
   if (hudMessage)
   {
@@ -1066,13 +1148,26 @@ function drawHud()
       text(`Saved Run: ${getLevelLabel()}  |  Score ${campaignState.score}  |  Lives ${campaignState.lives}`, width / 2, height * 0.52);
       text('Press SPACE to continue your saved run.', width / 2, height * 0.57);
       text('Press N to start a fresh campaign.', width / 2, height * 0.62);
+      text('Use P or Esc to pause during play, and M to mute sounds.', width / 2, height * 0.67);
     }
     else
     {
       text('Press SPACE to start. Use A/D or arrow keys to move.', width / 2, height * 0.52);
       text('Press SPACE again in mid-air for a double jump over wider gaps.', width / 2, height * 0.57);
       text('Reach each flag, activate checkpoints, and keep your lives alive.', width / 2, height * 0.62);
+      text('Use P or Esc to pause during play, and M to mute sounds.', width / 2, height * 0.67);
     }
+  }
+  else if (gameState === 'paused')
+  {
+    fill(255, 244, 196);
+    text('Paused', width / 2, height * 0.30);
+    textSize(18);
+    text(`${getLevelLabel()} - ${currentLevel.name}`, width / 2, height * 0.36);
+    text(`Score: ${campaignState.score}  Lives: ${campaignState.lives}`, width / 2, height * 0.42);
+    textStyle(NORMAL);
+    text('Press P or Esc to resume.', width / 2, height * 0.49);
+    text(`Press M to turn sound ${isMuted ? 'on' : 'off'}.`, width / 2, height * 0.54);
   }
   else if (gameState === 'level-transition')
   {
@@ -1320,9 +1415,17 @@ function createTone(freq, duration, wave, attack, release)
   };
 }
 
+function stopAllSounds()
+{
+  for (const sound of Object.values(sounds))
+  {
+    sound.osc.amp(0, 0.01);
+  }
+}
+
 function playSound(sound)
 {
-  if (!sound)
+  if (!sound || isMuted)
   {
     return;
   }
