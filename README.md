@@ -19,11 +19,14 @@ A side-scrolling game built with p5.js as a final course submission.
 - Enemies: implemented using a constructor function with patrol AI and collision
 - Double jump: press `Space` again in mid-air to clear wider gaps
 - Persistent progress: browser save remembers your run, best score, and furthest level reached
+- Pause and mute controls: pause with `P` / `Esc` and toggle sound with `M`
 
 ## Controls
 - Move: `A` / `D` or arrow keys
 - Jump / Double Jump / Start / Restart: `Space`
 - New campaign from save screen: `N`
+- Pause / Resume: `P` or `Esc`
+- Mute sound: `M`
 
 ## Run
 Open `index.html` in a browser with internet access (CDN scripts for `p5.js` and `p5.sound`).
