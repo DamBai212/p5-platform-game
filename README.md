@@ -31,5 +31,15 @@ A side-scrolling game built with p5.js as a final course submission.
 ## Run
 Open `index.html` in a browser with internet access (CDN scripts for `p5.js` and `p5.sound`).
 
+## Play Online
+https://dambai212.github.io/p5-platform-game/
+
+## Deployment
+GitHub Pages is already enabled for this repository.
+
+- The live site is served from the `main` branch root.
+- Merging changes into `main` updates the published game automatically.
+- The game files that power the live site are `index.html`, `levels.js`, and `sketch.js`.
+
 ## Submission note
 A draft commentary is included in `commentary.md` and can be exported to PDF for the second upload area.
