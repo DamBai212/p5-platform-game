@@ -15,6 +15,11 @@ let gameCharWorldX;
 const MAX_JUMPS = 2;
 const GROUND_JUMP_STRENGTH = 120;
 const AIR_JUMP_STRENGTH = 105;
+const STORAGE_KEYS = {
+  progress: 'skylineSprintProgress',
+  stats: 'skylineSprintStats',
+  muted: 'skylineSprintMuted'
+};
 
 let isLeft = false;
 let isRight = false;
@@ -34,10 +39,13 @@ let stars = [];
 let currentLevel;
 let checkpoint;
 let flagpole;
-let gameState = 'start'; // start | playing | level-transition | victory | game-over
+let gameState = 'start'; // start | playing | paused | level-transition | victory | game-over
 let campaignState;
+let persistentStats;
+let hasSavedRun = false;
 let hudMessage = '';
 let hudMessageTimer = 0;
+let isMuted = false;
 
 let sounds;
 
@@ -48,21 +56,27 @@ function setup()
 
   floorPosY = height * 0.75;
   initSounds();
-  resetCampaign();
-  loadLevel(0);
+  loadPersistentStats();
+  loadAudioSettings();
+
+  const savedCampaign = loadSavedCampaign();
+  if (savedCampaign)
+  {
+    restoreSavedCampaign(savedCampaign);
+  }
+  else
+  {
+    resetCampaign();
+    loadLevel(0);
+  }
+
   gameState = 'start';
 }
 
 function resetCampaign()
 {
-  campaignState = {
-    currentLevelIndex: 0,
-    lives: 3,
-    score: 0,
-    collectedItemIds: new Set(),
-    checkpointActive: false,
-    checkpointSpawn: null
-  };
+  campaignState = createDefaultCampaignState();
+  hasSavedRun = false;
 
   hudMessage = '';
   hudMessageTimer = 0;
@@ -73,12 +87,222 @@ function beginCampaign()
   resetCampaign();
   loadLevel(0);
   gameState = 'playing';
+  saveCampaignProgress();
+}
+
+function resumeSavedCampaign()
+{
+  gameState = 'playing';
+  saveCampaignProgress();
+}
+
+function createDefaultCampaignState()
+{
+  return {
+    currentLevelIndex: 0,
+    lives: 3,
+    score: 0,
+    collectedItemIds: new Set(),
+    checkpointActive: false,
+    checkpointSpawn: null
+  };
+}
+
+function loadPersistentStats()
+{
+  persistentStats = {
+    bestScore: 0,
+    bestLevelReached: 1
+  };
+
+  try
+  {
+    const rawStats = localStorage.getItem(STORAGE_KEYS.stats);
+    if (!rawStats)
+    {
+      return;
+    }
+
+    const savedStats = JSON.parse(rawStats);
+    if (Number.isFinite(savedStats.bestScore))
+    {
+      persistentStats.bestScore = max(0, round(savedStats.bestScore));
+    }
+
+    if (Number.isFinite(savedStats.bestLevelReached))
+    {
+      persistentStats.bestLevelReached = constrain(round(savedStats.bestLevelReached), 1, LEVELS.length);
+    }
+  }
+  catch (error)
+  {
+    persistentStats = {
+      bestScore: 0,
+      bestLevelReached: 1
+    };
+  }
+}
+
+function loadAudioSettings()
+{
+  isMuted = false;
+
+  try
+  {
+    isMuted = localStorage.getItem(STORAGE_KEYS.muted) === 'true';
+  }
+  catch (error)
+  {
+    isMuted = false;
+  }
+}
+
+function persistAudioSettings()
+{
+  try
+  {
+    localStorage.setItem(STORAGE_KEYS.muted, String(isMuted));
+  }
+  catch (error)
+  {
+    // Ignore storage errors and continue gameplay.
+  }
+}
+
+function loadSavedCampaign()
+{
+  try
+  {
+    const rawProgress = localStorage.getItem(STORAGE_KEYS.progress);
+    if (!rawProgress)
+    {
+      return null;
+    }
+
+    const savedCampaign = JSON.parse(rawProgress);
+    const normalizedLevelIndex = normalizeLevelIndex(savedCampaign.currentLevelIndex);
+    const normalizedLives = Number.isFinite(savedCampaign.lives) ? max(1, round(savedCampaign.lives)) : 3;
+    const normalizedScore = Number.isFinite(savedCampaign.score) ? max(0, round(savedCampaign.score)) : 0;
+    const collectedItemIds = Array.isArray(savedCampaign.collectedItemIds) ? savedCampaign.collectedItemIds : [];
+    const checkpointSpawn = isValidSpawn(savedCampaign.checkpointSpawn) ? {
+      x: savedCampaign.checkpointSpawn.x,
+      y: savedCampaign.checkpointSpawn.y
+    } : null;
+
+    return {
+      currentLevelIndex: normalizedLevelIndex,
+      lives: normalizedLives,
+      score: normalizedScore,
+      collectedItemIds,
+      checkpointActive: Boolean(savedCampaign.checkpointActive) && checkpointSpawn !== null,
+      checkpointSpawn
+    };
+  }
+  catch (error)
+  {
+    return null;
+  }
+}
+
+function restoreSavedCampaign(savedCampaign)
+{
+  campaignState = {
+    currentLevelIndex: savedCampaign.currentLevelIndex,
+    lives: savedCampaign.lives,
+    score: savedCampaign.score,
+    collectedItemIds: new Set(savedCampaign.collectedItemIds),
+    checkpointActive: savedCampaign.checkpointActive,
+    checkpointSpawn: savedCampaign.checkpointSpawn
+  };
+
+  hasSavedRun = true;
+  hudMessage = '';
+  hudMessageTimer = 0;
+  loadLevel(savedCampaign.currentLevelIndex);
+}
+
+function normalizeLevelIndex(levelIndex)
+{
+  return constrain(round(Number.isFinite(levelIndex) ? levelIndex : 0), 0, LEVELS.length - 1);
+}
+
+function isValidSpawn(spawn)
+{
+  return Boolean(
+    spawn &&
+    Number.isFinite(spawn.x) &&
+    Number.isFinite(spawn.y)
+  );
+}
+
+function saveCampaignProgress(progressOverride)
+{
+  updatePersistentStats();
+
+  const progress = progressOverride || {
+    currentLevelIndex: campaignState.currentLevelIndex,
+    lives: campaignState.lives,
+    score: campaignState.score,
+    collectedItemIds: Array.from(campaignState.collectedItemIds),
+    checkpointActive: campaignState.checkpointActive,
+    checkpointSpawn: campaignState.checkpointSpawn ? { ...campaignState.checkpointSpawn } : null
+  };
+
+  try
+  {
+    localStorage.setItem(STORAGE_KEYS.progress, JSON.stringify(progress));
+    hasSavedRun = true;
+  }
+  catch (error)
+  {
+    hasSavedRun = false;
+  }
+}
+
+function clearSavedCampaignProgress()
+{
+  try
+  {
+    localStorage.removeItem(STORAGE_KEYS.progress);
+  }
+  catch (error)
+  {
+    // Ignore storage errors and continue gameplay.
+  }
+
+  hasSavedRun = false;
+}
+
+function updatePersistentStats(levelOverride)
+{
+  const scoreTarget = campaignState ? campaignState.score : 0;
+  const levelTarget = constrain(levelOverride || (campaignState.currentLevelIndex + 1), 1, LEVELS.length);
+  const nextBestScore = max(persistentStats.bestScore, scoreTarget);
+  const nextBestLevel = max(persistentStats.bestLevelReached, levelTarget);
+
+  if (nextBestScore === persistentStats.bestScore && nextBestLevel === persistentStats.bestLevelReached)
+  {
+    return;
+  }
+
+  persistentStats.bestScore = nextBestScore;
+  persistentStats.bestLevelReached = nextBestLevel;
+
+  try
+  {
+    localStorage.setItem(STORAGE_KEYS.stats, JSON.stringify(persistentStats));
+  }
+  catch (error)
+  {
+    // Ignore storage errors and continue gameplay.
+  }
 }
 
 function loadLevel(levelIndex)
 {
   currentLevel = LEVELS[levelIndex];
   campaignState.currentLevelIndex = levelIndex;
+  updatePersistentStats();
 
   resetMovementFlags();
   buildSceneFromLevel(currentLevel);
@@ -164,6 +388,7 @@ function advanceToNextLevel()
 
   loadLevel(nextLevelIndex);
   gameState = 'playing';
+  saveCampaignProgress();
 }
 
 function draw()
@@ -357,13 +582,39 @@ function handleHorizontalMovement()
 
 function keyPressed()
 {
+  if (isMuteInput())
+  {
+    toggleMute();
+    return;
+  }
+
+  if (isPauseInput())
+  {
+    togglePause();
+    return;
+  }
+
+  if (gameState === 'start' && isNewRunInput())
+  {
+    beginCampaign();
+    return;
+  }
+
   if (keyCode === 32)
   {
     userStartAudio();
 
     if (gameState === 'start')
     {
-      beginCampaign();
+      if (hasSavedRun)
+      {
+        resumeSavedCampaign();
+      }
+      else
+      {
+        beginCampaign();
+      }
+
       return;
     }
 
@@ -422,6 +673,50 @@ function isLeftInput()
 function isRightInput()
 {
   return keyCode === RIGHT_ARROW || (typeof key === 'string' && key.toLowerCase() === 'd');
+}
+
+function isPauseInput()
+{
+  return keyCode === ESCAPE || (typeof key === 'string' && key.toLowerCase() === 'p');
+}
+
+function isMuteInput()
+{
+  return typeof key === 'string' && key.toLowerCase() === 'm';
+}
+
+function isNewRunInput()
+{
+  return typeof key === 'string' && key.toLowerCase() === 'n';
+}
+
+function togglePause()
+{
+  if (gameState === 'playing')
+  {
+    isLeft = false;
+    isRight = false;
+    gameState = 'paused';
+    showHudMessage('Paused');
+  }
+  else if (gameState === 'paused')
+  {
+    gameState = 'playing';
+    showHudMessage('Resumed');
+  }
+}
+
+function toggleMute()
+{
+  isMuted = !isMuted;
+  persistAudioSettings();
+
+  if (isMuted)
+  {
+    stopAllSounds();
+  }
+
+  showHudMessage(isMuted ? 'Sound muted' : 'Sound on');
 }
 
 function canJump()
@@ -614,6 +909,7 @@ function checkCollectable(item)
     item.isFound = true;
     campaignState.collectedItemIds.add(item.id);
     campaignState.score += 1;
+    saveCampaignProgress();
     playSound(sounds.collect);
   }
 }
@@ -667,6 +963,7 @@ function checkCheckpoint()
     checkpoint.isReached = true;
     campaignState.checkpointActive = true;
     campaignState.checkpointSpawn = { ...checkpoint.spawn };
+    saveCampaignProgress();
     showHudMessage('Checkpoint activated');
     playSound(sounds.collect);
   }
@@ -702,10 +999,22 @@ function checkFlagpole()
 
     if (campaignState.currentLevelIndex === LEVELS.length - 1)
     {
+      updatePersistentStats(LEVELS.length);
+      clearSavedCampaignProgress();
       gameState = 'victory';
     }
     else
     {
+      const nextLevelIndex = campaignState.currentLevelIndex + 1;
+      updatePersistentStats(nextLevelIndex + 1);
+      saveCampaignProgress({
+        currentLevelIndex: nextLevelIndex,
+        lives: campaignState.lives,
+        score: campaignState.score,
+        collectedItemIds: Array.from(campaignState.collectedItemIds),
+        checkpointActive: false,
+        checkpointSpawn: null
+      });
       gameState = 'level-transition';
     }
   }
@@ -788,7 +1097,7 @@ function drawHud()
 {
   noStroke();
   fill(19, 23, 38, 180);
-  rect(14, 14, 380, 98, 10);
+  rect(14, 14, 430, 112, 10);
 
   fill(250);
   textAlign(LEFT);
@@ -803,6 +1112,8 @@ function drawHud()
   textSize(15);
   const checkpointStatus = campaignState.checkpointActive ? 'Checkpoint: active' : 'Checkpoint: not reached';
   text(checkpointStatus, 160, 72);
+  text(`Sound: ${isMuted ? 'Muted' : 'On'}`, 28, 100);
+  text('P/Esc Pause  M Mute', 160, 100);
 
   if (hudMessage)
   {
@@ -830,9 +1141,33 @@ function drawHud()
     text(`${getLevelLabel()} - ${currentLevel.name}`, width / 2, height * 0.32);
     textStyle(NORMAL);
     text(currentLevel.introText, width / 2 - 260, height * 0.37, 520, 80);
-    text('Press SPACE to start. Use A/D or arrow keys to move.', width / 2, height * 0.47);
-    text('Press SPACE again in mid-air for a double jump over wider gaps.', width / 2, height * 0.52);
-    text('Reach each flag, activate checkpoints, and keep your lives alive.', width / 2, height * 0.57);
+    text(`Best Score: ${persistentStats.bestScore}  |  Best Progress: Level ${persistentStats.bestLevelReached}/${LEVELS.length}`, width / 2, height * 0.47);
+
+    if (hasSavedRun)
+    {
+      text(`Saved Run: ${getLevelLabel()}  |  Score ${campaignState.score}  |  Lives ${campaignState.lives}`, width / 2, height * 0.52);
+      text('Press SPACE to continue your saved run.', width / 2, height * 0.57);
+      text('Press N to start a fresh campaign.', width / 2, height * 0.62);
+      text('Use P or Esc to pause during play, and M to mute sounds.', width / 2, height * 0.67);
+    }
+    else
+    {
+      text('Press SPACE to start. Use A/D or arrow keys to move.', width / 2, height * 0.52);
+      text('Press SPACE again in mid-air for a double jump over wider gaps.', width / 2, height * 0.57);
+      text('Reach each flag, activate checkpoints, and keep your lives alive.', width / 2, height * 0.62);
+      text('Use P or Esc to pause during play, and M to mute sounds.', width / 2, height * 0.67);
+    }
+  }
+  else if (gameState === 'paused')
+  {
+    fill(255, 244, 196);
+    text('Paused', width / 2, height * 0.30);
+    textSize(18);
+    text(`${getLevelLabel()} - ${currentLevel.name}`, width / 2, height * 0.36);
+    text(`Score: ${campaignState.score}  Lives: ${campaignState.lives}`, width / 2, height * 0.42);
+    textStyle(NORMAL);
+    text('Press P or Esc to resume.', width / 2, height * 0.49);
+    text(`Press M to turn sound ${isMuted ? 'on' : 'off'}.`, width / 2, height * 0.54);
   }
   else if (gameState === 'level-transition')
   {
@@ -895,12 +1230,15 @@ function loseLife()
 
   if (campaignState.lives < 1)
   {
+    updatePersistentStats();
+    clearSavedCampaignProgress();
     gameState = 'game-over';
     clearCheckpointProgress();
   }
   else
   {
     loadLevel(campaignState.currentLevelIndex);
+    saveCampaignProgress();
   }
 }
 
@@ -1077,9 +1415,17 @@ function createTone(freq, duration, wave, attack, release)
   };
 }
 
+function stopAllSounds()
+{
+  for (const sound of Object.values(sounds))
+  {
+    sound.osc.amp(0, 0.01);
+  }
+}
+
 function playSound(sound)
 {
-  if (!sound)
+  if (!sound || isMuted)
   {
     return;
   }

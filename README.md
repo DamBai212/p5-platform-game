@@ -18,14 +18,29 @@ A side-scrolling game built with p5.js as a final course submission.
 - Platforms: implemented using a factory function pattern
 - Enemies: implemented using a constructor function with patrol AI and collision
 - Double jump: press `Space` again in mid-air to clear wider gaps
+- Persistent progress: browser save remembers your run, best score, and furthest level reached
+- Pause and mute controls: pause with `P` / `Esc` and toggle sound with `M`
 
 ## Controls
 - Move: `A` / `D` or arrow keys
 - Jump / Double Jump / Start / Restart: `Space`
+- New campaign from save screen: `N`
+- Pause / Resume: `P` or `Esc`
+- Mute sound: `M`
 
 ## Run
 Open `index.html` in a browser with internet access (CDN scripts for `p5.js` and `p5.sound`).
 Link to site https://dambai212.github.io/p5-platform-game/
+
+## Play Online
+https://dambai212.github.io/p5-platform-game/
+
+## Deployment
+GitHub Pages is already enabled for this repository.
+
+- The live site is served from the `main` branch root.
+- Merging changes into `main` updates the published game automatically.
+- The game files that power the live site are `index.html`, `levels.js`, and `sketch.js`.
 
 ## Submission note
 A draft commentary is included in `commentary.md` and can be exported to PDF for the second upload area.
